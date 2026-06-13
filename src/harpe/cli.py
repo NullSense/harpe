@@ -1,24 +1,24 @@
-"""grab — command-line dispatcher and the bundled fzf frontend.
+"""harpe — command-line dispatcher and the bundled fzf frontend.
 
-  grab                 interactive: paste/type a URL, then route like auto
-  grab <url>...        auto-detect backend; >1 image → fzf picker to choose
-  grab -v <url>        video      (yt-dlp, true max quality)
-  grab -A <url>        audio only (yt-dlp -x, no re-encode)
-  grab -i <url>        images     (gallery-dl whole gallery, no picking)
-  grab -p <url>        page picker (static-HTML scan, pick which images to grab)
-  grab -a <url>        art/zoomable (dezoomify-rs)
-  grab -r <url|img>    reverse image: find source + highest-res copy
-  grab -s <query|url>  artwork scans across museums (a URL auto-derives the name)
-  grab -F <url>...     fetch: download given image URLs (the engine's download half)
+  harpe                 interactive: paste/type a URL, then route like auto
+  harpe <url>...        auto-detect backend; >1 image → fzf picker to choose
+  harpe -v <url>        video      (yt-dlp, true max quality)
+  harpe -A <url>        audio only (yt-dlp -x, no re-encode)
+  harpe -i <url>        images     (gallery-dl whole gallery, no picking)
+  harpe -p <url>        page picker (static-HTML scan, pick which images to grab)
+  harpe -a <url>        art/zoomable (dezoomify-rs)
+  harpe -r <url|img>    reverse image: find source + highest-res copy
+  harpe -s <query|url>  artwork scans across museums (a URL auto-derives the name)
+  harpe -F <url>...     fetch: download given image URLs (the engine's download half)
 
 Default auto mode enumerates images first (via gallery-dl --get-urls or static scan):
   exactly 1 found → download directly; >1 → fzf picker; 0 → gallery-dl full download.
   Use -i to always download the whole gallery without prompting.
 
 Frontend-agnostic use (browser extension / GUI / service):
-  grab -p <url> --json            -> JSON candidate list (no UI); or scan the DOM yourself
-  grab -s <query> --json          -> JSON ranked museum candidates
-  grab -F <url>... [--referer R] [--dest D] [--json]  -> download a chosen subset
+  harpe -p <url> --json            -> JSON candidate list (no UI); or scan the DOM yourself
+  harpe -s <query> --json          -> JSON ranked museum candidates
+  harpe -F <url>... [--referer R] [--dest D] [--json]  -> download a chosen subset
 The default (no --json) launches the bundled fzf picker. See engine.py for the API.
 """
 import argparse
