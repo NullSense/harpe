@@ -22,7 +22,6 @@ Repository = "https://github.com/NullSense/harpe"
 
 [project.scripts]
 harpe = "harpe.cli:main"
-grab = "harpe.cli:main"      # kept alias — muscle memory, Hyprland menu, vdl
 
 [build-system]
 requires = ["hatchling"]
