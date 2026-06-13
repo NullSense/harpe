@@ -1,14 +1,19 @@
 """grab — command-line dispatcher and the bundled fzf frontend.
 
-  grab <url>...        auto-detect backend
+  grab                 interactive: paste/type a URL, then route like auto
+  grab <url>...        auto-detect backend; >1 image → fzf picker to choose
   grab -v <url>        video      (yt-dlp, true max quality)
   grab -A <url>        audio only (yt-dlp -x, no re-encode)
-  grab -i <url>        images     (gallery-dl; falls back to page picker if unsupported)
-  grab -p <url>        page picker (scan a page, pick which images to grab)
+  grab -i <url>        images     (gallery-dl whole gallery, no picking)
+  grab -p <url>        page picker (static-HTML scan, pick which images to grab)
   grab -a <url>        art/zoomable (dezoomify-rs)
   grab -r <url|img>    reverse image: find source + highest-res copy
   grab -s <query|url>  artwork scans across museums (a URL auto-derives the name)
   grab -F <url>...     fetch: download given image URLs (the engine's download half)
+
+Default auto mode enumerates images first (via gallery-dl --get-urls or static scan):
+  exactly 1 found → download directly; >1 → fzf picker; 0 → gallery-dl full download.
+  Use -i to always download the whole gallery without prompting.
 
 Frontend-agnostic use (browser extension / GUI / service):
   grab -p <url> --json            -> JSON candidate list (no UI); or scan the DOM yourself
@@ -90,7 +95,8 @@ def flow_audio(urls):
 
 
 def flow_image(urls):
-    note("images → gallery-dl")
+    """Download the entire gallery via gallery-dl — no picking (-i flag)."""
+    note("images → gallery-dl (whole gallery)")
     import time
     start = time.time()
     rc = backends.gallery(urls, IMG_DIR)
@@ -330,6 +336,39 @@ def _open(url):
             return
 
 
+def flow_auto_image(page: str) -> int:
+    """Auto mode for a single non-video, non-art URL.
+
+    Enumerates images first (gallery-dl --get-urls or static scan):
+      - exactly 1  → download directly via httpx
+      - >1         → open fzf picker, download chosen subset via httpx
+      - 0          → fall back to full gallery-dl download (current -i behaviour)
+
+    Note: the picker path downloads via httpx (engine.fetch_images), which may
+    miss site auth/cookies that gallery-dl handles on a full -i run.
+    """
+    with Spinner("enumerating images"):
+        cands = engine.enumerate_images(page)
+
+    if not cands:
+        # No images found via either strategy — fall back to full gallery-dl.
+        note("no images enumerated — falling back to gallery-dl full download")
+        return flow_image([page])
+
+    if len(cands) == 1:
+        note("1 image found — downloading directly")
+        return _save_and_notify(
+            engine.fetch_images([cands[0]["url"]], referer=page))
+
+    note(f"{len(cands)} image(s) found — opening picker")
+    picks = picker.pick_page(
+        [(c["dim"], c["url"], c["name"]) for c in cands])
+    if not picks:
+        return 0   # user cancelled — not an error
+    return _save_and_notify(
+        engine.fetch_images([u for u, _n in picks], referer=page))
+
+
 def flow_auto(urls):
     rc = 0
     for url in urls:
@@ -342,8 +381,44 @@ def flow_auto(urls):
         elif routing.has_video(url):
             rc |= flow_video([url])
         else:
-            rc |= flow_image([url])
+            rc |= flow_auto_image(url)
     return rc
+
+
+def _clipboard_url() -> str | None:
+    """Try to read a URL from the system clipboard. Returns None on any failure."""
+    import shutil
+    cmd = "pbpaste" if sys.platform == "darwin" else "wl-paste"
+    if not shutil.which(cmd):
+        return None
+    try:
+        import subprocess as _sp
+        result = _sp.run([cmd], capture_output=True, text=True, timeout=3)
+        text = result.stdout.strip()
+        if text.startswith(("http://", "https://")):
+            return text
+    except Exception:
+        pass
+    return None
+
+
+def flow_interactive() -> int:
+    """Interactive mode: prompt for a URL then route like auto."""
+    clip = _clipboard_url()
+    if clip:
+        prompt = f"URL [{clip}]: "
+    else:
+        prompt = "URL: "
+    try:
+        raw = input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        return 130
+    url = raw or clip
+    if not url:
+        return die("no URL provided")
+    if not url.startswith(("http://", "https://")):
+        return die(f"not a valid URL: {url}")
+    return flow_auto([url])
 
 
 def main(argv=None):
@@ -354,8 +429,10 @@ def main(argv=None):
     g = p.add_mutually_exclusive_group()
     g.add_argument("-v", "--video", action="store_const", dest="mode", const="video")
     g.add_argument("-A", "--audio", action="store_const", dest="mode", const="audio")
-    g.add_argument("-i", "--image", action="store_const", dest="mode", const="image")
-    g.add_argument("-p", "--page", action="store_const", dest="mode", const="page")
+    g.add_argument("-i", "--image", action="store_const", dest="mode", const="image",
+                   help="download whole gallery via gallery-dl (no picking)")
+    g.add_argument("-p", "--page", action="store_const", dest="mode", const="page",
+                   help="scan static HTML, pick which images to grab (fzf multi-select)")
     g.add_argument("-a", "--art", action="store_const", dest="mode", const="art")
     g.add_argument("-r", "--reverse", action="store_const", dest="mode", const="reverse")
     g.add_argument("-s", "--search", action="store_const", dest="mode", const="search")
@@ -364,11 +441,22 @@ def main(argv=None):
                    help="emit candidates/results as JSON instead of launching the fzf UI")
     p.add_argument("--referer", help="Referer header for --fetch downloads")
     p.add_argument("--dest", help="destination dir for --fetch downloads")
-    p.add_argument("args", nargs="+", metavar="url|query")
+    p.add_argument("args", nargs="*", metavar="url|query")
     p.set_defaults(mode="auto")
     ns = p.parse_args(argv)
 
     mode, a = ns.mode, ns.args
+
+    # No-args → interactive mode (prompt for URL, then route like auto).
+    if not a and mode == "auto":
+        try:
+            return flow_interactive()
+        except KeyboardInterrupt:
+            return 130
+
+    if not a:
+        p.error("at least one URL/query is required")
+
     try:
         if mode == "video":
             return flow_video(a)

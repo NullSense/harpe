@@ -22,32 +22,46 @@ on your `PATH`.
 ## Use
 
 ```bash
-harpe <url>            # auto-detect: video · gallery · zoomable art · museum page
-harpe -p <url>         # scan a page, pick which images to grab (fzf, multi-select)
+harpe                  # interactive: prompts for a URL (pre-fills from clipboard)
+harpe <url>            # auto-detect: video · art · museum page · images with picker
+harpe -p <url>         # page picker: static-HTML scan, pick which images to grab
+harpe -i <url>         # download whole gallery via gallery-dl (no picking)
 harpe -s <query|url>   # search the same artwork across museums, grab the best scan
 harpe -r <url|image>   # reverse-image: find the source + highest-res copy
-harpe -v / -A / -i / -a   # force video / audio / gallery / zoomable-art
+harpe -v / -A / -a     # force video / audio / zoomable-art
 ```
 
 `harpe <url>` routes for you: Google Arts & Culture / IIIF → tile-stitched; a museum or
 encyclopedia artwork page → federated museum search (finds the same work as a CC0 original
 elsewhere, far higher-res than the page thumbnail); a video URL → yt-dlp; anything else →
-gallery-dl, falling back to the **page picker** when no extractor exists.
+enumerate images first and **let you pick** when more than one is found.
+
+Running `harpe` with no arguments enters **interactive mode**: it pre-fills the URL
+from your clipboard (if one is there), lets you accept or type a new one, then routes
+exactly like `harpe <url>`.
 
 ### Picking from a page
 
-`harpe -p` reads a page, ranks every image by real pixel size, and opens an fzf grid with
-live previews:
+**Auto mode** (`harpe <url>`) enumerates images via `gallery-dl --get-urls` (fast,
+handles auth) or a static-HTML scan, then:
+
+- **1 image** → downloads it directly.
+- **>1 images** → opens the fzf picker so you choose what to grab.
+- **0 images** → falls back to a full `gallery-dl` download.
+
+Use `-i` when you want everything without the picker.
+
+`harpe -p` always opens the static-HTML picker regardless of image count:
 
 ```
-🖼  biggest first · Tab/Space to pick · Ctrl-A all
+🖼  biggest first · Tab to select · Ctrl-A all
 4000×3000  the-deluge.jpg            ▒▒▒ preview ▒▒▒
 1600×1200  detail-crop.jpg
  800× 600  thumbnail.jpg
 ```
 
-`Tab`/`Space` toggle images, `Ctrl-A` selects all, `Enter` downloads the lot (with the
-right Referer/UA and de-duped names). Static-HTML pages only for now — JS-rendered /
+`Tab` toggles selection, `Ctrl-A` selects all, `Enter` downloads the chosen images
+(with the right Referer/UA and de-duped names). Static-HTML pages only — JS-rendered /
 lazy-loaded images need the rendered-DOM frontend (roadmap).
 
 ## Frontends
@@ -74,7 +88,7 @@ e.g. `infisical run -- harpe …`): `FIRECRAWL_API_KEY`, `HARVARD_API_KEY`,
 ## Develop
 
 ```bash
-uv run pytest        # 59 unit tests (routing, extraction, ranking, metadata)
+uv run pytest        # unit tests (routing, extraction, ranking, metadata, engine)
 uv run harpe --help
 ```
 

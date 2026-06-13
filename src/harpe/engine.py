@@ -16,6 +16,7 @@ notifications) live in the frontend, not here.
 """
 import dataclasses
 import re
+import subprocess
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -77,6 +78,51 @@ def _row_to_dict(dim: str, url: str, name: str) -> dict:
         except ValueError:
             pass
     return {"url": url, "name": name, "dim": dim, "width": w, "height": h}
+
+
+_MEDIA_URL_RE = re.compile(
+    r"^https?://\S+\.(?:jpe?g|png|webp|gif|tiff?|bmp|avif|svg)(\?[^#\s]*)?$",
+    re.IGNORECASE,
+)
+
+
+def enumerate_images(url: str) -> list[dict]:
+    """List images on *url* without downloading, biggest first.
+
+    Strategy:
+      1. Try ``gallery-dl --get-urls <url>`` — fast, handles auth/cookies.
+         Parse stdout for http(s) media URLs.
+      2. If gallery-dl returns nothing OR exits 64 (unsupported URL),
+         fall back to ``scan_page(url)`` (static-HTML extraction).
+
+    Returns dicts in scan_page's shape: {url, name, dim, width, height}.
+    Dims may be "?" / None for URLs that come from gallery-dl (no HEAD probe).
+
+    Note: picked items are downloaded via httpx (fetch_images); that path
+    may miss site auth/cookies that gallery-dl would supply on a full download.
+    """
+    try:
+        proc = subprocess.run(
+            ["gallery-dl", "--get-urls", url],
+            capture_output=True,
+            text=True,
+        )
+        exit_code = proc.returncode
+        if exit_code != 64:  # 64 = unsupported URL
+            media_urls = [
+                ln.strip()
+                for ln in proc.stdout.splitlines()
+                if _MEDIA_URL_RE.match(ln.strip())
+            ]
+            if media_urls:
+                return [
+                    {"url": u, "name": urlsplit(u).path.rsplit("/", 1)[-1] or u,
+                     "dim": "?", "width": None, "height": None}
+                    for u in media_urls
+                ]
+    except FileNotFoundError:
+        pass  # gallery-dl not installed; fall through to scan_page
+    return scan_page(url)
 
 
 def fetch_images(urls, referer: str | None = None, dest=None) -> list[dict]:

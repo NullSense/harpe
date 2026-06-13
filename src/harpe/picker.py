@@ -49,7 +49,7 @@ def pick_page(rows: list[tuple[str, str, str]]) -> list[tuple[str, str]]:
     lines = ["\t".join(_clean(x) for x in row) for row in rows]
     preview = f"{GRAB_THUMB} {{2}} {{1}} · {{3}}"
     sel = _fzf(lines, with_nth="1,3", preview=preview,
-               header="🖼  biggest first · Tab/Space to pick · Ctrl-A all",
+               header="🖼  biggest first · Tab to select · Ctrl-A all",
                multi=True)
     out = []
     for ln in sel:
