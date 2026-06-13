@@ -64,6 +64,8 @@ Use `-i` when you want everything without the picker.
 (with the right Referer/UA and de-duped names). Static-HTML pages only — JS-rendered /
 lazy-loaded images need the rendered-DOM frontend (roadmap).
 
+> Render a live terminal GIF of this flow: `vhs demo/picker.tape` (see [`demo/`](demo/)).
+
 ## Frontends
 
 fzf is just the bundled UI. The engine (`harpe.engine`) is plain JSON-in/JSON-out, so a
