@@ -1,0 +1,41 @@
+[project]
+name = "harpe"
+version = "0.1.0"
+description = "Harpe — a hooked blade for the web: enter, catch, and retrieve any video, image gallery, page of images, or high-res artwork."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "NullSense" }]
+keywords = ["downloader", "gallery-dl", "yt-dlp", "iiif", "museum", "image-scraper", "art"]
+dependencies = [
+    "httpx>=0.27",
+    "selectolax>=0.3",
+    "pillow>=10",
+    "trafilatura>=1.8",
+    "PicImageSearch>=3.12",
+    "typing_extensions",
+]
+
+[project.urls]
+Homepage = "https://github.com/NullSense/harpe"
+Repository = "https://github.com/NullSense/harpe"
+
+[project.scripts]
+harpe = "harpe.cli:main"
+grab = "harpe.cli:main"      # kept alias — muscle memory, Hyprland menu, vdl
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+# Supply-chain guard: never resolve a dependency version published in the last
+# 7 days — a freshly-compromised release is the attack vector. Bump this cutoff
+# deliberately (to today-minus-7) when you intentionally update deps.
+exclude-newer = "2026-06-06"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

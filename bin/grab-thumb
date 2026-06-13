@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# grab-thumb <image-url> [header words...]
+#
+# fzf preview helper: print a metadata header, then render a remote image inline
+# (chafa → Kitty/iTerm/sixel graphics, auto-detected; Unicode blocks elsewhere).
+# Downloads+caches+validates the image. Cross-platform (Linux + macOS): uses curl,
+# file, chafa, and a portable hash (md5sum / md5 / cksum).
+#
+# UX guards:
+#   • prints the header instantly (res/title visible before the image loads)
+#   • shows a "loading" hint while a non-cached image downloads
+#   • skips inline preview for very large images (HEAD content-length > cap) so a
+#     200 MB scan never freezes the preview pane
+set -u
+url="${1:-}"; shift 2>/dev/null || true
+hdr="$*"
+cols="${FZF_PREVIEW_COLUMNS:-40}"; lines="${FZF_PREVIEW_LINES:-20}"
+UA="Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
+MAX_BYTES="${GRAB_THUMB_MAX_BYTES:-62914560}"   # 60 MB — above this, don't inline
+
+reserve=0
+if [ -n "$hdr" ]; then
+  printf '%s\n\n' "$hdr" | fold -s -w "$cols"
+  reserve=3
+fi
+
+[ -n "$url" ] || { echo "(no image)"; exit 0; }
+case "$url" in http://*|https://*) ;; *) echo "(no preview)"; exit 0 ;; esac
+command -v chafa >/dev/null 2>&1 || { echo "image previews need chafa (brew/pacman install chafa)"; exit 0; }
+
+hash_url() {  # portable cache key: md5sum (Linux) / md5 (macOS) / cksum (fallback)
+  if   command -v md5sum >/dev/null 2>&1; then printf '%s' "$1" | md5sum | cut -d' ' -f1
+  elif command -v md5    >/dev/null 2>&1; then printf '%s' "$1" | md5 -q
+  else printf '%s' "$1" | cksum | cut -d' ' -f1; fi
+}
+
+dir="$HOME/.cache/grab-thumbs"; mkdir -p "$dir"
+f="$dir/$(hash_url "$url")"
+ref=$(printf '%s' "$url" | sed -E 's#^(https?://[^/]+)/.*#\1/#')
+
+if [ ! -s "$f" ]; then
+  # Large-image guard: a HEAD (best-effort) so we don't pull a gigapixel scan
+  # just to preview it. If the server hides the length, we fall through.
+  clen=$(curl -fsLI -A "$UA" -H "Referer: $ref" --max-time 5 "$url" 2>/dev/null \
+         | tr -d '\r' | awk -F': ' 'tolower($1)=="content-length"{v=$2} END{print v}')
+  if [ -n "${clen:-}" ] && [ "$clen" -gt "$MAX_BYTES" ] 2>/dev/null; then
+    printf '🖼  %s MB — too large to preview inline\n   (it will still download at full quality)\n' \
+      "$((clen / 1048576))"
+    exit 0
+  fi
+  printf '⏳ loading preview…\n'
+  curl -fsL -A "$UA" -H "Referer: $ref" --max-time 12 --max-filesize "$MAX_BYTES" \
+       -o "$f" "$url" 2>/dev/null
+  if ! file -b --mime-type "$f" 2>/dev/null | grep -q '^image/'; then
+    rm -f "$f"; echo "(no preview available)"; exit 0
+  fi
+fi
+
+# Kitty graphics placements otherwise STACK — delete all before each render.
+printf '\033_Ga=d\033\\'
+chafa --clear --animate off \
+      --size="${cols}x$(( lines - reserve ))" \
+      "$f" 2>/dev/null || echo "(preview unavailable)"
