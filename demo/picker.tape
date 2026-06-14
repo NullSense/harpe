@@ -6,6 +6,12 @@
 #
 # Shows: `harpe -p <url>` scanning a page, then the fzf picker — Tab to multi-select
 # by real resolution, Enter to download the chosen images.
+#
+# NOTE: VHS's terminal can't do Kitty/Ghostty inline-image graphics, so the fzf
+# preview pane shows the ramp/text only (no thumbnails) in the GIF. For a clip WITH
+# real image previews, screen-record an actual Ghostty session instead.
+# Run from the repo root so the Output path lands in demo/:
+#   cd ~/Programming/harpe && vhs demo/picker.tape
 
 Output demo/harpe-picker.gif
 
@@ -27,13 +33,13 @@ Type "clear"
 Enter
 Show
 
-# The command
-Type "harpe -p https://books.toscrape.com/"
+# The command — Perseus (on-brand: the harpe-wielder), a content-rich static page
+Type "harpe -p https://en.wikipedia.org/wiki/Perseus"
 Sleep 600ms
 Enter
 
-# Scan + dimension probe, then fzf opens
-Sleep 4500ms
+# Scan + dimension probe, then fzf opens (Wikimedia probes can take a moment)
+Sleep 6000ms
 
 # Move through results and multi-select with Tab (biggest first)
 Down@450ms 1

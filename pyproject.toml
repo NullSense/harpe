@@ -34,7 +34,7 @@ dev = ["pytest>=8"]
 # Supply-chain guard: never resolve a dependency version published in the last
 # 7 days — a freshly-compromised release is the attack vector. Bump this cutoff
 # deliberately (to today-minus-7) when you intentionally update deps.
-exclude-newer = "2026-06-06"
+exclude-newer = "2026-06-07"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
