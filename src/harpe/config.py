@@ -1,12 +1,18 @@
 """Paths, user agents, and env-tunable knobs."""
 import os
+import sys
 from pathlib import Path
 
 HOME = Path.home()
-VID_DIR = HOME / "Videos" / "grab"
-IMG_DIR = HOME / "Pictures" / "grab"
-ART_DIR = HOME / "Pictures" / "grab" / "art"
-AUD_DIR = HOME / "Music" / "grab"
+# macOS calls the video folder "Movies"; Linux/Windows use "Videos".
+_VIDEOS = "Movies" if sys.platform == "darwin" else "Videos"
+# Default download roots, grouped by media type. Override any of them with the
+# HARPE_*_DIR env vars (e.g. HARPE_IMG_DIR) — the browser extension passes its
+# own --dest, which takes precedence over all of these.
+VID_DIR = Path(os.environ.get("HARPE_VID_DIR", HOME / _VIDEOS / "harpe"))
+IMG_DIR = Path(os.environ.get("HARPE_IMG_DIR", HOME / "Pictures" / "harpe"))
+ART_DIR = Path(os.environ.get("HARPE_ART_DIR", IMG_DIR / "art"))
+AUD_DIR = Path(os.environ.get("HARPE_AUD_DIR", HOME / "Music" / "harpe"))
 
 # Browser UA — some museum/CDN servers (Met/Vercel, AIC IIIF) bot-block non-browser
 # agents and hotlinks. Used for image downloads + previews.

@@ -131,7 +131,7 @@ def fetch_images(urls, referer: str | None = None, dest=None) -> list[dict]:
     base = Path(dest) if dest else None
     results = []
     for url in urls:
-        d = base or (IMG_DIR / (urlsplit(referer or url).netloc or "grab"))
+        d = base or (IMG_DIR / (urlsplit(referer or url).netloc or "harpe"))
         d.mkdir(parents=True, exist_ok=True)
         out = unique_path(d / extract.display_name(url))
         try:
