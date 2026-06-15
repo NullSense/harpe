@@ -60,3 +60,26 @@ def firecrawl_key() -> str | None:
         if v:
             return v
     return None
+
+
+def ytdlp_extra_args() -> list[str]:
+    """Opt-in yt-dlp hardening, read fresh each call (env-gated so default installs
+    never break):
+
+      HARPE_COOKIES_FROM_BROWSER=firefox  download logged-in content (Instagram,
+                                          YouTube, etc.) using your own browser
+                                          session — the CLI's edge over any server.
+      HARPE_IMPERSONATE=chrome            TLS/HTTP impersonation; fixes TikTok and
+                                          some bot-walls (needs yt-dlp[curl-cffi]).
+
+    Plus always-on resilience for flaky links and large/segmented videos.
+    """
+    args = ["--retries", "3", "--fragment-retries", "10",
+            "--concurrent-fragments", "4"]
+    browser = os.environ.get("HARPE_COOKIES_FROM_BROWSER", "").strip()
+    if browser:
+        args += ["--cookies-from-browser", browser]
+    impersonate = os.environ.get("HARPE_IMPERSONATE", "").strip()
+    if impersonate:
+        args += ["--impersonate", impersonate]
+    return args

@@ -80,6 +80,17 @@ harpe -F <url>... --json     # download a chosen subset (reads stdin with `-F -`
 The engine owns extraction, UA/Referer, naming, dedupe, the 8K resolution cap, and
 lossless EXIF/XMP metadata; a frontend only chooses what to grab.
 
+### Harder sites (logged-in, TikTok, bot-walls)
+
+Video downloads are always retried/segment-parallelised. Two opt-in env vars
+unlock the rest (off by default so a plain install never breaks):
+
+- `HARPE_COOKIES_FROM_BROWSER=firefox` — download **logged-in** content (Instagram,
+  YouTube, private posts) using your own browser session. This is the CLI's edge
+  over any server: it runs locally with your cookies and residential IP.
+- `HARPE_IMPERSONATE=chrome` — TLS/HTTP impersonation that fixes TikTok and some
+  bot-walls (install `yt-dlp[curl-cffi]` for impersonation targets).
+
 ## Sources
 
 Keyless: Wikimedia Commons, Art Institute of Chicago, Cleveland Museum, The Met,

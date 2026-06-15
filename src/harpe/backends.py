@@ -3,7 +3,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from .config import AUD_DIR, MAXPX, VID_DIR
+from .config import AUD_DIR, MAXPX, VID_DIR, ytdlp_extra_args
 
 _VID_TMPL = ("%(extractor_key)s/%(uploader_id,uploader|unknown)s/"
              "%(title).80B (%(upload_date>%Y-%m-%d|no-date)s) [%(id)s].%(ext)s")
@@ -12,13 +12,14 @@ _VID_TMPL = ("%(extractor_key)s/%(uploader_id,uploader|unknown)s/"
 def video(urls) -> int:
     return subprocess.run([
         "yt-dlp", "-S", "res,fps,tbr", "--merge-output-format", "mp4",
-        "--embed-metadata", "-o", f"{VID_DIR}/{_VID_TMPL}", *urls]).returncode
+        "--embed-metadata", *ytdlp_extra_args(),
+        "-o", f"{VID_DIR}/{_VID_TMPL}", *urls]).returncode
 
 
 def audio(urls) -> int:
     return subprocess.run([
         "yt-dlp", "-x", "--audio-format", "best", "--audio-quality", "0",
-        "--embed-metadata", "--embed-thumbnail",
+        "--embed-metadata", "--embed-thumbnail", *ytdlp_extra_args(),
         "-o", f"{AUD_DIR}/{_VID_TMPL}", *urls]).returncode
 
 
