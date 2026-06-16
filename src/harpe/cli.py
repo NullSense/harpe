@@ -10,6 +10,9 @@
   harpe -r <url|img>    reverse image: find source + highest-res copy
   harpe -s <query|url>  artwork scans across museums (a URL auto-derives the name)
   harpe -F <url>...     fetch: download given image URLs (the engine's download half)
+  harpe install-host    register the browser-extension native host (auto on first run)
+  harpe uninstall-host  remove the native-host registration
+  harpe --native-host   speak the browser native-messaging protocol (run BY the browser)
 
 Default auto mode enumerates images first (via gallery-dl --get-urls or static scan):
   exactly 1 found → download directly; >1 → fzf picker; 0 → gallery-dl full download.
@@ -422,6 +425,46 @@ def flow_interactive() -> int:
 
 
 def main(argv=None):
+    raw = sys.argv[1:] if argv is None else list(argv)
+
+    # Native-messaging host mode: the browser launches us via the installed
+    # launcher (harpe --native-host …). Intercept BEFORE argparse — the browser
+    # appends its own args (the extension origin / manifest path) that argparse
+    # would reject. This must produce no stdout except framed messages.
+    if "--native-host" in raw:
+        from . import nativehost
+        return nativehost.run()
+
+    # Host registration commands (no argparse: simple verbs).
+    if raw and raw[0] in ("install-host", "uninstall-host"):
+        from . import installhost
+        if raw[0] == "uninstall-host":
+            removed = installhost.uninstall()
+            note(f"removed native host from {len(removed)} location(s)")
+            return 0
+        rest, chrome_ids, firefox_ids, all_b = raw[1:], [], [], False
+        i = 0
+        while i < len(rest):
+            if rest[i] == "--chrome-id" and i + 1 < len(rest):
+                chrome_ids.append(rest[i + 1]); i += 2
+            elif rest[i] == "--firefox-id" and i + 1 < len(rest):
+                firefox_ids.append(rest[i + 1]); i += 2
+            elif rest[i] == "--all":
+                all_b = True; i += 1
+            else:
+                i += 1
+        written = installhost.install(chrome_ids, firefox_ids, all_b)
+        note(f"registered native host in {len(written)} location(s)")
+        return 0
+
+    # First run: silently register the host so `uv tool install harpe` is the only
+    # step a user needs for the extension's engine features.
+    try:
+        from . import installhost
+        installhost.auto_register_once()
+    except Exception:
+        pass
+
     # prog left to argparse default (argv0 basename) so help shows `harpe` or
     # `grab` depending on which command was invoked.
     p = argparse.ArgumentParser(add_help=True, description=__doc__,

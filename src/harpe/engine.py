@@ -15,6 +15,7 @@ Everything returned is plain JSON-serializable dicts so any frontend (or the CLI
 notifications) live in the frontend, not here.
 """
 import dataclasses
+import os
 import re
 import subprocess
 import time
@@ -153,18 +154,33 @@ def _group_subpath(group: str, host: str, author: str | None) -> str:
     return host  # "site"
 
 
+def _roots_from(roots: dict | None) -> dict:
+    """Resolve a {kind: path} override map (expanding ~ and $VARS), falling back
+    to the configured defaults for any kind not supplied."""
+    out = {"image": IMG_DIR, "video": VID_DIR, "audio": AUD_DIR}
+    if roots:
+        for kind in out:
+            v = roots.get(kind)
+            if isinstance(v, str) and v.strip():
+                out[kind] = Path(os.path.expanduser(os.path.expandvars(v.strip())))
+    return out
+
+
 def fetch_images(urls, referer: str | None = None, dest=None,
-                 items: dict | None = None, group: str = "site") -> list[dict]:
+                 items: dict | None = None, group: str = "site",
+                 roots: dict | None = None) -> list[dict]:
     """Download a list of media URLs (images, video, or audio). Returns one
     result dict per URL: {url, ok, path?, kind?|error?}.
 
     Files land in the type-appropriate root (Pictures/Videos/Music under "harpe",
-    or ``dest``), nested per ``group`` ("site" | "author" | "both" | "none").
-    ``items`` optionally maps a url → {"name": descriptive base, "author": who}
-    so callers (the extension) can supply a readable filename + account instead
-    of the opaque CDN basename. The saved extension is corrected from the
-    response Content-Type, so a Twitter MP4 is saved as .mp4, not .jpg."""
+    or per-type ``roots``, or a single ``dest``), nested per ``group`` ("site" |
+    "author" | "both" | "none"). ``items`` optionally maps a url → {"name":
+    descriptive base, "author": who} so callers (the extension) can supply a
+    readable filename + account instead of the opaque CDN basename. The saved
+    extension is corrected from the response Content-Type, so a Twitter MP4 is
+    saved as .mp4, not .jpg."""
     base = Path(dest) if dest else None
+    typed = _roots_from(roots)
     items = items or {}
     results = []
     for url in urls:
@@ -173,7 +189,7 @@ def fetch_images(urls, referer: str | None = None, dest=None,
         try:
             out, kind = _download_media(url, out_base=base, host=host, referer=referer,
                                         suggested=meta.get("name"),
-                                        author=meta.get("author"), group=group)
+                                        author=meta.get("author"), group=group, roots=typed)
             results.append({"url": url, "ok": True, "path": str(out), "kind": kind})
         except Exception as e:
             results.append({"url": url, "ok": False, "error": str(e)})
@@ -182,7 +198,7 @@ def fetch_images(urls, referer: str | None = None, dest=None,
 
 def _download_media(url: str, out_base, host: str, referer: str | None,
                     suggested: str | None = None, author: str | None = None,
-                    group: str = "site"):
+                    group: str = "site", roots: dict | None = None):
     """Stream one URL to disk, choosing the filename + folder from a caller hint,
     the response Content-Type, and the URL (in that order). Returns (path, kind)."""
     headers = {"User-Agent": UA, "Referer": referer or origin(url)}
@@ -206,13 +222,14 @@ def _download_media(url: str, out_base, host: str, referer: str | None,
         name = stem + ext
         kind = extract.kind_for_ext(ext)
 
-        # Explicit dest = exact folder. Otherwise nest under the type root by
-        # the chosen grouping (site/author/both/none).
+        # Explicit dest = exact folder. Otherwise nest under the type root
+        # (caller override or default) by the chosen grouping.
         if out_base is not None:
             d = out_base
         else:
+            root = (roots or {}).get(kind) or _root_for(kind)
             sub = _group_subpath(group, host, author)
-            d = _root_for(kind) / sub if sub else _root_for(kind)
+            d = root / sub if sub else root
         d.mkdir(parents=True, exist_ok=True)
         out = unique_path(d / name)
         with open(out, "wb") as f:
