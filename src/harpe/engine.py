@@ -125,51 +125,94 @@ def enumerate_images(url: str) -> list[dict]:
     return scan_page(url)
 
 
-def _typed_dir(kind: str, host: str) -> Path:
-    """Default download folder for a media kind, grouped by source host:
-    images → IMG_DIR, videos → VID_DIR, audio → AUD_DIR."""
-    root = {"video": VID_DIR, "audio": AUD_DIR}.get(kind, IMG_DIR)
-    return root / host
+def _root_for(kind: str) -> Path:
+    """Type-appropriate download root: images → IMG_DIR, video → VID_DIR,
+    audio → AUD_DIR."""
+    return {"video": VID_DIR, "audio": AUD_DIR}.get(kind, IMG_DIR)
 
 
-def fetch_images(urls, referer: str | None = None, dest=None) -> list[dict]:
+def sanitize_stem(s: str | None, limit: int = 80) -> str:
+    """Filesystem-safe filename/folder stem from arbitrary text (tweet/author).
+    Collapses whitespace, strips path-hostile chars, trims length."""
+    s = re.sub(r"\s+", " ", (s or "").strip())
+    s = re.sub(r'[\\/:*?"<>|]+', "", s)        # illegal on common filesystems
+    s = re.sub(r"[^\w.\- ]+", "_", s)          # tame the rest
+    return s.strip(". _")[:limit]
+
+
+def _group_subpath(group: str, host: str, author: str | None) -> str:
+    """Where to nest a download: by source site (default), by author/account,
+    both, or flat. Author falls back to host when unknown."""
+    a = sanitize_stem(author, 60)
+    if group == "none":
+        return ""
+    if group == "author":
+        return a or host
+    if group == "both":
+        return f"{a}/{host}" if a else host
+    return host  # "site"
+
+
+def fetch_images(urls, referer: str | None = None, dest=None,
+                 items: dict | None = None, group: str = "site") -> list[dict]:
     """Download a list of media URLs (images, video, or audio). Returns one
     result dict per URL: {url, ok, path?, kind?|error?}.
 
-    When no explicit ``dest`` is given, each file lands in the type-appropriate
-    root (Pictures/Videos/Music under "harpe"), grouped by source host. The
-    saved extension is corrected from the response Content-Type, so a Twitter
-    MP4 is saved as .mp4 — not mislabelled .jpg."""
+    Files land in the type-appropriate root (Pictures/Videos/Music under "harpe",
+    or ``dest``), nested per ``group`` ("site" | "author" | "both" | "none").
+    ``items`` optionally maps a url → {"name": descriptive base, "author": who}
+    so callers (the extension) can supply a readable filename + account instead
+    of the opaque CDN basename. The saved extension is corrected from the
+    response Content-Type, so a Twitter MP4 is saved as .mp4, not .jpg."""
     base = Path(dest) if dest else None
+    items = items or {}
     results = []
     for url in urls:
         host = urlsplit(referer or url).netloc or "harpe"
+        meta = items.get(url) or {}
         try:
-            out, kind = _download_media(url, out_base=base, host=host, referer=referer)
+            out, kind = _download_media(url, out_base=base, host=host, referer=referer,
+                                        suggested=meta.get("name"),
+                                        author=meta.get("author"), group=group)
             results.append({"url": url, "ok": True, "path": str(out), "kind": kind})
         except Exception as e:
             results.append({"url": url, "ok": False, "error": str(e)})
     return results
 
 
-def _download_media(url: str, out_base, host: str, referer: str | None):
-    """Stream one URL to disk, choosing the filename + folder from the response
-    Content-Type (falling back to the URL). Returns (path, kind)."""
+def _download_media(url: str, out_base, host: str, referer: str | None,
+                    suggested: str | None = None, author: str | None = None,
+                    group: str = "site"):
+    """Stream one URL to disk, choosing the filename + folder from a caller hint,
+    the response Content-Type, and the URL (in that order). Returns (path, kind)."""
     headers = {"User-Agent": UA, "Referer": referer or origin(url)}
-    name = extract.display_name(url)
+    url_name = extract.display_name(url)
     with httpx.stream("GET", url, headers=headers, follow_redirects=True,
                       timeout=60.0) as r:
         r.raise_for_status()
         ct_ext = extract.ext_from_content_type(r.headers.get("content-type"))
-        if ct_ext:
-            stem = name
+
+        # Stem: prefer a descriptive caller-supplied name, else the URL basename.
+        stem = sanitize_stem(suggested) if suggested else ""
+        if not stem:
+            stem = url_name
             for e in extract.MEDIA_EXT:
                 if stem.lower().endswith(e):
                     stem = stem[: -len(e)]
                     break
-            name = stem + ct_ext
-        kind = extract.kind_for_ext(Path(name).suffix)
-        d = out_base or _typed_dir(kind, host)
+        # Extension: Content-Type wins; else the URL's real media ext; else .jpg.
+        url_ext = Path(url_name).suffix
+        ext = ct_ext or (url_ext if url_ext.lower() in extract.MEDIA_EXT else ".jpg")
+        name = stem + ext
+        kind = extract.kind_for_ext(ext)
+
+        # Explicit dest = exact folder. Otherwise nest under the type root by
+        # the chosen grouping (site/author/both/none).
+        if out_base is not None:
+            d = out_base
+        else:
+            sub = _group_subpath(group, host, author)
+            d = _root_for(kind) / sub if sub else _root_for(kind)
         d.mkdir(parents=True, exist_ok=True)
         out = unique_path(d / name)
         with open(out, "wb") as f:
