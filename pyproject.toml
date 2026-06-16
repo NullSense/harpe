@@ -22,6 +22,7 @@ Repository = "https://github.com/NullSense/harpe"
 
 [project.scripts]
 harpe = "harpe.cli:main"
+grab = "harpe.cli:main"
 
 [build-system]
 requires = ["hatchling"]

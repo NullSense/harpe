@@ -75,3 +75,33 @@ def test_invalid_group_falls_back_to_site(monkeypatch):
                         lambda *a, **k: captured.update(k) or [])
     nativehost.handle({"urls": ["https://h/x.jpg"], "group": "garbage"})
     assert captured["group"] == "site"
+
+
+def test_partial_body_read_returns_none():
+    # Declares 5 bytes but only 2 follow → clean None, not a crash.
+    assert nativehost.read_message(io.BytesIO(b"\x05\x00\x00\x00hi")) is None
+
+
+def test_run_loop_end_to_end_ping():
+    inp = io.BytesIO()
+    nativehost.write_message(inp, {"ping": True})
+    inp.seek(0)
+    out = io.BytesIO()
+    rc = nativehost.run(inp, out)          # EOF after one message → returns 0
+    out.seek(0)
+    assert rc == 0
+    reply = nativehost.read_message(out)
+    assert reply["ok"] and reply["pong"]
+
+
+def test_cap_reply_truncates_oversized_results():
+    big = [{"url": f"u{i}", "ok": True, "path": "x" * 2000} for i in range(2000)]
+    capped = nativehost.cap_reply({"results": big})
+    assert capped["truncated"] is True
+    assert len(capped["results"]) < len(big)
+    assert len(json.dumps(capped).encode()) <= nativehost.MAX_REPLY
+
+
+def test_cap_reply_passes_small_replies_unchanged():
+    r = {"ok": True, "results": [{"url": "u", "ok": True}]}
+    assert nativehost.cap_reply(r) == r

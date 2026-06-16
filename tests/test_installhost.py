@@ -66,3 +66,23 @@ def test_install_skips_absent_browsers_unless_all(monkeypatch, tmp_path):
                         lambda: ([absent], [], "NMH", "nmh"))
     assert installhost.install() == []                 # not detected → skipped
     assert installhost.install(all_browsers=True)      # forced → written
+
+
+def test_write_launcher_quotes_paths_with_spaces(monkeypatch, tmp_path):
+    monkeypatch.setattr(installhost, "_data_dir", lambda: tmp_path / "data")
+    monkeypatch.setattr(installhost, "_harpe_command", lambda: ["/home/my user/bin/harpe"])
+    body = open(installhost.write_launcher()).read()
+    assert '"/home/my user/bin/harpe" --native-host' in body
+
+
+def test_auto_register_once_is_idempotent(monkeypatch, tmp_path):
+    if installhost.os.name == "nt":
+        return
+    _redirect(monkeypatch, tmp_path)
+    calls = {"n": 0}
+    real_install = installhost.install
+    monkeypatch.setattr(installhost, "install",
+                        lambda *a, **k: (calls.__setitem__("n", calls["n"] + 1), real_install(*a, **k))[1])
+    installhost.auto_register_once()
+    installhost.auto_register_once()   # sentinel now exists → no-op
+    assert calls["n"] == 1

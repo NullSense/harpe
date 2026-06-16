@@ -46,7 +46,7 @@ def note(msg: str) -> None:
 
 
 def die(msg: str) -> int:
-    print(f"grab: {msg}", file=sys.stderr)
+    print(f"harpe: {msg}", file=sys.stderr)
     raise SystemExit(1)
 
 
@@ -457,11 +457,13 @@ def main(argv=None):
         note(f"registered native host in {len(written)} location(s)")
         return 0
 
-    # First run: silently register the host so `uv tool install harpe` is the only
-    # step a user needs for the extension's engine features.
+    # First run: register the host so the extension's engine "just works". Only on
+    # interactive (tty) use — never as a surprise side effect of scripted/--json/
+    # piped calls or CI. Explicit `harpe install-host` covers the headless case.
     try:
-        from . import installhost
-        installhost.auto_register_once()
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            from . import installhost
+            installhost.auto_register_once()
     except Exception:
         pass
 

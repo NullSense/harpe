@@ -93,3 +93,25 @@ def test_sanitize_stem_strips_path_chars():
     assert engine.sanitize_stem("a/b\\c: d?*") == "abc d"
     assert engine.sanitize_stem("  ...trim... ") == "trim"
     assert len(engine.sanitize_stem("x" * 200)) == 80
+
+
+def test_sanitize_stem_blocks_traversal_and_empty():
+    assert "/" not in engine.sanitize_stem("../../etc/passwd")
+    assert "\\" not in engine.sanitize_stem("..\\..\\windows")
+    assert engine.sanitize_stem("") == ""
+    assert engine.sanitize_stem("///") == ""
+
+
+def test_group_subpath_both_without_author_is_host():
+    assert engine._group_subpath("both", "x.com", None) == "x.com"
+    assert engine._group_subpath("author", "x.com", None) == "x.com"
+    assert engine._group_subpath("none", "x.com", "bob") == ""
+
+
+def test_roots_override_expands_user_and_vars(monkeypatch, tmp_path):
+    _patch_dirs(monkeypatch, tmp_path)
+    _patch_stream(monkeypatch, "video/mp4")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    [res] = engine.fetch_images(["https://h/clip.mp4"],
+                                roots={"video": "$HOME/customvids"})
+    assert str(res["path"]).startswith(str(tmp_path / "customvids"))

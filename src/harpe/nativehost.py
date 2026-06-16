@@ -34,17 +34,49 @@ except Exception:
 
 # ── framing ───────────────────────────────────────────────────────────────────
 
+MAX_REPLY = 900_000  # Chrome hard-caps native messages at 1 MiB; stay under.
+
+
+def _read_exact(stream, n: int) -> bytes | None:
+    """Read exactly n bytes, looping over short reads. None = clean EOF."""
+    buf = b""
+    while len(buf) < n:
+        chunk = stream.read(n - len(buf))
+        if not chunk:
+            return None
+        buf += chunk
+    return buf
+
+
 def read_message(stream) -> dict | None:
-    raw_len = stream.read(4)
-    if len(raw_len) < 4:
+    raw_len = _read_exact(stream, 4)
+    if raw_len is None:
         return None  # stdin closed → caller exits
     (length,) = struct.unpack("<I", raw_len)
     if length == 0:
         return {}
-    raw = stream.read(length)
-    if len(raw) < length:
+    raw = _read_exact(stream, length)
+    if raw is None:
         return None
     return json.loads(raw.decode("utf-8"))
+
+
+def cap_reply(reply: dict) -> dict:
+    """Keep a reply under Chrome's 1 MiB limit. If a results list overflows, trim
+    it (keeping the earliest entries) and flag `truncated` rather than letting the
+    browser silently drop the whole message."""
+    if len(json.dumps(reply, ensure_ascii=False).encode("utf-8")) <= MAX_REPLY:
+        return reply
+    results = reply.get("results")
+    if not isinstance(results, list):
+        return reply  # nothing safe to trim
+    keep = 0
+    for i in range(len(results)):
+        trial = {**reply, "results": results[: i + 1], "truncated": True}
+        if len(json.dumps(trial, ensure_ascii=False).encode("utf-8")) > MAX_REPLY:
+            break
+        keep = i + 1
+    return {**reply, "results": results[:keep], "truncated": True}
 
 
 def write_message(stream, obj: dict) -> None:
@@ -112,8 +144,9 @@ def pick_folder(start: str | None = None) -> str | None:
     if cancelled / unavailable. Used by the extension's 'Browse…' button."""
     start = os.path.expanduser(os.path.expandvars(start)) if start else os.path.expanduser("~")
     if sys.platform == "darwin":
+        esc = start.replace("\\", "\\\\").replace('"', '\\"')  # avoid AppleScript injection
         script = (f'POSIX path of (choose folder with prompt "Harpe — save to" '
-                  f'default location POSIX file "{start}")')
+                  f'default location POSIX file "{esc}")')
         out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
         return out.stdout.strip() or None
     if os.name == "nt":
@@ -178,12 +211,15 @@ def handle(msg: dict) -> dict:
     return {"results": results}
 
 
-def run() -> int:
+def run(stdin=None, stdout=None) -> int:
     """Main native-messaging loop: read framed requests from stdin, reply on
-    stdout, until stdin closes."""
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO,
-                        format="harpe-host %(levelname)s: %(message)s")
-    stdin, stdout = sys.stdin.buffer, sys.stdout.buffer
+    stdout, until stdin closes. Streams default to the process's binary stdio;
+    callers (tests) may inject BytesIO."""
+    if stdin is None or stdout is None:
+        logging.basicConfig(stream=sys.stderr, level=logging.INFO,
+                            format="harpe-host %(levelname)s: %(message)s")
+    stdin = stdin or sys.stdin.buffer
+    stdout = stdout or sys.stdout.buffer
     log.info("harpe native host started (pid=%d, v%s)", os.getpid(), VERSION)
     while True:
         try:
@@ -197,10 +233,10 @@ def run() -> int:
         if not msg:
             continue
         try:
-            write_message(stdout, handle(msg))
+            write_message(stdout, cap_reply(handle(msg)))
         except Exception as exc:
             log.error("handler error: %s", exc)
             try:
-                write_message(stdout, {"ok": False, "results": [], "error": str(exc)})
+                write_message(stdout, {"ok": False, "error": str(exc)})
             except Exception:
                 return 1

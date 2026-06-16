@@ -126,12 +126,6 @@ def enumerate_images(url: str) -> list[dict]:
     return scan_page(url)
 
 
-def _root_for(kind: str) -> Path:
-    """Type-appropriate download root: images → IMG_DIR, video → VID_DIR,
-    audio → AUD_DIR."""
-    return {"video": VID_DIR, "audio": AUD_DIR}.get(kind, IMG_DIR)
-
-
 def sanitize_stem(s: str | None, limit: int = 80) -> str:
     """Filesystem-safe filename/folder stem from arbitrary text (tweet/author).
     Collapses whitespace, strips path-hostile chars, trims length."""
@@ -227,7 +221,7 @@ def _download_media(url: str, out_base, host: str, referer: str | None,
         if out_base is not None:
             d = out_base
         else:
-            root = (roots or {}).get(kind) or _root_for(kind)
+            root = (roots or _roots_from(None))[kind]
             sub = _group_subpath(group, host, author)
             d = root / sub if sub else root
         d.mkdir(parents=True, exist_ok=True)
