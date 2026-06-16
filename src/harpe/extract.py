@@ -20,6 +20,41 @@ from selectolax.parser import HTMLParser
 from .config import PAGE_MAX, PAGE_MINPX, UA
 
 IMG_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".tiff", ".tif", ".bmp")
+VIDEO_EXT = (".mp4", ".webm", ".mkv", ".mov", ".m4v", ".ts")
+AUDIO_EXT = (".mp3", ".m4a", ".aac", ".opus", ".ogg", ".oga", ".wav", ".flac")
+# Every extension the fetcher recognises as a real media file (so a video URL
+# like .../clip.mp4 keeps its suffix instead of being mislabelled .jpg).
+MEDIA_EXT = IMG_EXT + VIDEO_EXT + AUDIO_EXT
+
+# Map a server Content-Type to a canonical extension — used to repair the
+# filename when the URL has no/ambiguous extension (common on CDN download URLs).
+_CT_EXT = {
+    "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
+    "image/webp": ".webp", "image/avif": ".avif", "image/tiff": ".tiff",
+    "image/bmp": ".bmp", "image/svg+xml": ".svg",
+    "video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov",
+    "video/x-matroska": ".mkv", "video/mp2t": ".ts",
+    "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "audio/aac": ".aac",
+    "audio/ogg": ".ogg", "audio/opus": ".opus",
+    "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/flac": ".flac",
+}
+
+
+def ext_from_content_type(ct: str | None) -> str | None:
+    """Canonical extension for a Content-Type header value, or None if unknown."""
+    if not ct:
+        return None
+    return _CT_EXT.get(ct.split(";")[0].strip().lower())
+
+
+def kind_for_ext(ext: str) -> str:
+    """Classify a file extension as 'video', 'audio', or (default) 'image'."""
+    ext = ext.lower()
+    if ext in VIDEO_EXT:
+        return "video"
+    if ext in AUDIO_EXT:
+        return "audio"
+    return "image"
 LAZY_ATTRS = ("data-src", "data-lazy-src", "data-original", "data-hi-res-src",
               "data-large", "data-zoom-image", "data-image")
 _WM_THUMB = re.compile(
@@ -177,7 +212,7 @@ async def _probe_all(urls):
 def display_name(url: str) -> str:
     n = unquote(urlsplit(url).path.rsplit("/", 1)[-1]) or "image"
     n = re.sub(r"[^\w.\- ]+", "_", n)[:80]
-    if not n.lower().endswith(IMG_EXT):
+    if not n.lower().endswith(MEDIA_EXT):
         n += ".jpg"
     return n
 

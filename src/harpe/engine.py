@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from . import extract, rank, sources
-from .config import IMG_DIR, UA
+from .config import AUD_DIR, IMG_DIR, UA, VID_DIR
 
 
 # --- shared download helpers (used by the page + art flows) -----------------
@@ -125,21 +125,57 @@ def enumerate_images(url: str) -> list[dict]:
     return scan_page(url)
 
 
+def _typed_dir(kind: str, host: str) -> Path:
+    """Default download folder for a media kind, grouped by source host:
+    images → IMG_DIR, videos → VID_DIR, audio → AUD_DIR."""
+    root = {"video": VID_DIR, "audio": AUD_DIR}.get(kind, IMG_DIR)
+    return root / host
+
+
 def fetch_images(urls, referer: str | None = None, dest=None) -> list[dict]:
-    """Download a list of image URLs. Returns one result dict per URL:
-    {url, ok, path?|error?}. The default destination is IMG_DIR/<host>."""
+    """Download a list of media URLs (images, video, or audio). Returns one
+    result dict per URL: {url, ok, path?, kind?|error?}.
+
+    When no explicit ``dest`` is given, each file lands in the type-appropriate
+    root (Pictures/Videos/Music under "harpe"), grouped by source host. The
+    saved extension is corrected from the response Content-Type, so a Twitter
+    MP4 is saved as .mp4 — not mislabelled .jpg."""
     base = Path(dest) if dest else None
     results = []
     for url in urls:
-        d = base or (IMG_DIR / (urlsplit(referer or url).netloc or "harpe"))
-        d.mkdir(parents=True, exist_ok=True)
-        out = unique_path(d / extract.display_name(url))
+        host = urlsplit(referer or url).netloc or "harpe"
         try:
-            download_file(url, out, referer)
-            results.append({"url": url, "ok": True, "path": str(out)})
+            out, kind = _download_media(url, out_base=base, host=host, referer=referer)
+            results.append({"url": url, "ok": True, "path": str(out), "kind": kind})
         except Exception as e:
             results.append({"url": url, "ok": False, "error": str(e)})
     return results
+
+
+def _download_media(url: str, out_base, host: str, referer: str | None):
+    """Stream one URL to disk, choosing the filename + folder from the response
+    Content-Type (falling back to the URL). Returns (path, kind)."""
+    headers = {"User-Agent": UA, "Referer": referer or origin(url)}
+    name = extract.display_name(url)
+    with httpx.stream("GET", url, headers=headers, follow_redirects=True,
+                      timeout=60.0) as r:
+        r.raise_for_status()
+        ct_ext = extract.ext_from_content_type(r.headers.get("content-type"))
+        if ct_ext:
+            stem = name
+            for e in extract.MEDIA_EXT:
+                if stem.lower().endswith(e):
+                    stem = stem[: -len(e)]
+                    break
+            name = stem + ct_ext
+        kind = extract.kind_for_ext(Path(name).suffix)
+        d = out_base or _typed_dir(kind, host)
+        d.mkdir(parents=True, exist_ok=True)
+        out = unique_path(d / name)
+        with open(out, "wb") as f:
+            for chunk in r.iter_bytes(65536):
+                f.write(chunk)
+    return out, kind
 
 
 def search_art(query: str) -> list[dict]:
