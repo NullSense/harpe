@@ -1,6 +1,7 @@
 """Register Harpe as a native-messaging host for installed browsers.
 
-This is what makes the engine "just work" after `uv tool install harpe` — no
+This is what makes the engine "just work" after install (`uv tool install
+git+https://github.com/NullSense/harpe`) — no
 separate shell script for the user to run. It writes a tiny launcher that runs
 `harpe --native-host`, then drops the host manifest into each browser's
 NativeMessagingHosts directory (or the Windows registry), allowing the Harpe
@@ -196,7 +197,7 @@ def is_installed() -> bool:
 
 def auto_register_once() -> None:
     """Best-effort first-run registration: if the host has never been installed,
-    register it silently (one note to stderr). Lets `uv tool install harpe` be the
+    register it silently (one note to stderr). Lets installing harpe be the
     only step. Guarded by a sentinel so it runs once."""
     if is_installed():
         return
