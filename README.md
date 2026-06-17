@@ -80,6 +80,23 @@ harpe -F <url>... --json     # download a chosen subset (reads stdin with `-F -`
 The engine owns extraction, UA/Referer, naming, dedupe, the 8K resolution cap, and
 lossless EXIF/XMP metadata; a frontend only chooses what to grab.
 
+### Browser extension
+
+`harpe` is also its own [native-messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging)
+host — no separate helper script. The [Harpe extension](https://github.com/NullSense/harpe-extension)
+scans the rendered DOM (lazy-loaded / logged-in images a server can't see) and hands the
+chosen URLs to the engine over stdio, so downloads land on your machine with the right
+folders, names, and metadata.
+
+```bash
+harpe install-host     # register the native host for Chrome/Chromium/Firefox
+harpe uninstall-host   # remove it
+```
+
+Registration also happens automatically the first time you run `harpe` interactively, so
+most users never type `install-host`. `harpe --native-host` is the protocol endpoint the
+browser launches — you don't run it yourself.
+
 ### Harder sites (logged-in, TikTok, bot-walls)
 
 Video downloads are always retried/segment-parallelised. Two opt-in env vars

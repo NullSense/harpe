@@ -6,3 +6,13 @@ __pycache__/
 dist/
 build/
 .venv/
+
+# Stray downloaded media at the repo root (harpe's own output) — keep it out of git.
+# Real demo assets live under demo/.
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+/*.gif
+/*.mp4
+/*.webm
